@@ -1,4 +1,4 @@
-# Epam_assesment
+# Project_assesment
 
 
 A FastAPI-based project management service for creating, updating, sharing, and deleting projects with document management.
