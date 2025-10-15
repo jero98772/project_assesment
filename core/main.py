@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-"
-#Epam_assesment - by Jero98772
+#project_assesment - by Jero98772
 
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
