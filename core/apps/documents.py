@@ -9,12 +9,8 @@ from core.db.crud import (
     get_document_by_id, create_document, delete_document,
     get_project_documents, check_project_access, get_user_role, update_document, get_project_by_id
 )
-from core.tools.tools import (
-	verify_token,
-	extract_token,
-	get_current_user
-	)
-
+from core.tools.tools import verify_token
+from core.apps.projects import extract_token, get_current_user
 import os
 import uuid
 from pathlib import Path
@@ -27,6 +23,25 @@ Path(UPLOAD_DIR).mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 
 def get_document_dto(doc):
+    """
+    Convert a Document model instance to a Data Transfer Object (DTO).
+    
+    This helper function transforms a SQLAlchemy Document object into a
+    serializable dictionary for API responses, including user-friendly
+    field names and formatted timestamps.
+    
+    Args:
+        doc (Document): The Document model instance to convert
+        
+    Returns:
+        dict: Document DTO containing:
+            - id: Document ID
+            - original_filename: Original filename as uploaded by user
+            - file_type: File extension/type
+            - uploaded_by: Username of the uploader
+            - created_at: ISO format creation timestamp
+            - updated_at: ISO format last update timestamp
+    """
     return {
         "id": doc.id,
         "original_filename": doc.original_filename,
@@ -42,6 +57,26 @@ async def get_documents(
     authorization: str = None,
     db: Session = Depends(get_db)
 ):
+    """
+    Retrieve all documents associated with a specific project.
+    
+    This endpoint returns a list of all documents in a project that the
+    authenticated user has access to. Users must have at least participant
+    access to the project to view its documents.
+    
+    Args:
+        project_id (int): The ID of the project to retrieve documents from
+        authorization (str, optional): Bearer token for authentication
+        db (Session): Database session dependency
+        
+    Returns:
+        list: List of document DTOs containing document metadata
+        
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have access to the project
+    """
     token = extract_token(authorization)
     user_id = get_current_user(token)
     
@@ -58,6 +93,35 @@ async def upload_documents(
     authorization: str = None,
     db: Session = Depends(get_db)
 ):
+    """
+    Upload one or multiple documents to a project.
+    
+    This endpoint allows authenticated users with project access to upload
+    documents. Files are validated for allowed extensions, stored with unique
+    filenames, and associated with the project in the database.
+    
+    Args:
+        project_id (int): The ID of the project to upload documents to
+        files (list[UploadFile]): List of files to upload (multipart form data)
+        authorization (str, optional): Bearer token for authentication
+        db (Session): Database session dependency
+        
+    Returns:
+        dict: Upload success response containing:
+            - documents: List of uploaded document DTOs
+            
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have access to the project
+            - 404 error if project doesn't exist
+            - 400 error if file type is not allowed (only PDF and DOCX permitted)
+            
+    Notes:
+        - Files are stored in the 'uploads' directory with UUID-prefixed names
+        - Original filenames are preserved in the database
+        - Maximum file size limits should be configured at the web server level
+    """
     token = extract_token(authorization)
     user_id = get_current_user(token)
     
@@ -94,6 +158,30 @@ async def download_document(
     authorization: str = None,
     db: Session = Depends(get_db)
 ):
+    """
+    Download a specific document file.
+    
+    This endpoint allows authenticated users with project access to download
+    the actual document file. The file is served with its original filename.
+    
+    Args:
+        document_id (int): The ID of the document to download
+        authorization (str, optional): Bearer token for authentication
+        db (Session): Database session dependency
+        
+    Returns:
+        FileResponse: The document file with original filename
+        
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have access to the project
+            - 404 error if document or file doesn't exist
+            
+    Notes:
+        - Uses FastAPI's FileResponse for efficient file streaming
+        - Browser will typically download the file with its original name
+    """
     token = extract_token(authorization)
     user_id = get_current_user(token)
     
@@ -117,6 +205,32 @@ async def update_doc(
     authorization: str = None,
     db: Session = Depends(get_db)
 ):
+    """
+    Update document metadata (rename document).
+    
+    This endpoint allows project participants and owners to update the
+    display name (original filename) of a document without affecting
+    the actual stored file.
+    
+    Args:
+        document_id (int): The ID of the document to update
+        original_filename (str): New display name for the document
+        authorization (str, optional): Bearer token for authentication
+        db (Session): Database session dependency
+        
+    Returns:
+        dict: Updated document DTO
+        
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have appropriate access rights
+            - 404 error if document doesn't exist
+            
+    Notes:
+        - Only updates the display name, not the physical file name
+        - Requires at least participant role in the project
+    """
     token = extract_token(authorization)
     user_id = get_current_user(token)
     
@@ -140,6 +254,31 @@ async def delete_doc(
     authorization: str = None,
     db: Session = Depends(get_db)
 ):
+    """
+    Permanently delete a document and its associated file.
+    
+    This endpoint allows project participants and owners to delete a document.
+    Both the database record and the physical file are removed from the system.
+    
+    Args:
+        document_id (int): The ID of the document to delete
+        authorization (str, optional): Bearer token for authentication
+        db (Session): Database session dependency
+        
+    Returns:
+        dict: Success message confirming document deletion
+        
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have appropriate access rights
+            - 404 error if document doesn't exist
+            
+    Notes:
+        - This action is irreversible
+        - Both database record and physical file are deleted
+        - Requires at least participant role in the project
+    """
     token = extract_token(authorization)
     user_id = get_current_user(token)
     

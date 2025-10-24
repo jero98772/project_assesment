@@ -7,7 +7,6 @@ File for database operations like migrations, create tables and more
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from core.tools.tools import get_env
 
 DATABASE_URL = SQLALCHEMY_DATABASE_URL = "postgresql+psycopg2://your_db_user:your_password@localhost:5432/projects_db"
 
