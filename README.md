@@ -104,15 +104,14 @@ curl -X POST "http://127.0.0.1:9601/auth" \
 
 ### Login
 ```bash
-curl -X POST "http://127.0.0.1:9601/login" \
+curl -c cookies.txt -X POST "http://127.0.0.1:9601/login" \
   -H "Content-Type: application/json" \
   -d '{"login":"user1","password":"pass123"}'
 ```
 
 ### Create Project
 ```bash
-curl -X POST "http://127.0.0.1:9601/projects" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+curl -b cookies.txt -X POST "http://127.0.0.1:9601/projects" \
   -H "Content-Type: application/json" \
   -d '{"name":"My Project","description":"Test project"}'
 ```

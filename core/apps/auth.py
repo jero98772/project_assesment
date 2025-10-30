@@ -69,16 +69,16 @@ async def login(user: UserLogin, response: Response, db: Session = Depends(get_d
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    access_token = create_access_token(data={"sub": db_user.id})
-    refresh_token = create_refresh_token(data={"sub": db_user.id})
-    
+    access_token = create_access_token(data={"sub": str(db_user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(db_user.id)})
     # Set access token as HTTP-only cookie
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         max_age=3600,  # 1 hour
-        samesite="lax"
+        samesite=None,
+        secure=True
     )
     
     # Set refresh token as HTTP-only cookie
@@ -87,7 +87,8 @@ async def login(user: UserLogin, response: Response, db: Session = Depends(get_d
         value=refresh_token,
         httponly=True,
         max_age=604800,  # 7 days
-        samesite="lax"
+        samesite=None,
+        secure=True
     )
     
     return {
@@ -139,7 +140,8 @@ async def refresh_token(request: Request, response: Response, db: Session = Depe
         value=new_access_token,
         httponly=True,
         max_age=3600,  # 1 hour
-        samesite="lax"
+        samesite=None,
+        
     )
     
     return {"message": "Token refreshed successfully"}
