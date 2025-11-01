@@ -66,6 +66,7 @@ def delete_project(db: Session, project_id: int):
     return False
 
 def check_project_access(db: Session, user_id: int, project_id: int):
+    print(user_id,project_access.c.user_id)
     result = db.query(project_access).filter(
         project_access.c.user_id == user_id,
         project_access.c.project_id == project_id

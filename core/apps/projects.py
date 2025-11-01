@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-"
 #project_assesment - by Jero98772
 
-from fastapi import APIRouter, HTTPException, Depends, Response, Request
+from fastapi import APIRouter, HTTPException, Depends, Response, Request, File, UploadFile
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from datetime import datetime
+
 from core.db.database import get_db
 from core.db.crud import (
-    create_project, get_project_by_id, get_user_projects, update_project,
+    create_project, get_project_by_id, get_user_projects, update_project, create_document,
     delete_project, check_project_access, grant_project_access, get_user_role, get_user_by_login
 )
 
@@ -19,7 +21,7 @@ from core.tools.tools import (
     )
 
 from core.apps.documents import get_document_dto
-
+import os
 router = APIRouter()
 
 class ProjectCreate(BaseModel):
@@ -279,7 +281,137 @@ async def delete_project_endpoint(
     
     return {"message": "Project deleted successfully"}
 
+@router.get("/project/{project_id}/documents", tags=["Projects", "Documents"])
+async def get_project_documents(
+    project_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve all documents associated with a specific project.
+    
+    This endpoint returns a list of all documents that belong to the specified project.
+    The user must have access rights to the project to view its documents.
+    
+    Args:
+        project_id (int): The ID of the project whose documents to retrieve
+        request (Request): FastAPI request object to extract authentication token
+        db (Session): Database session dependency
+        
+    Returns:
+        list: List of document DTOs, each containing:
+            - id: Document ID
+            - name: Document filename
+            - file_path: Path to the document file
+            - uploaded_at: ISO format upload timestamp
+            - (any other fields returned by get_document_dto)
+            
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have access to the project
+            - 404 error if project doesn't exist
+    """
+    token = extract_token(request)
+    user_id = get_current_user(token)
+    
+    if not check_project_access(db, user_id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    documents = [get_document_dto(doc) for doc in project.documents]
+    return documents
+
+
+@router.post("/project/{project_id}/documents", tags=["Projects", "Documents"])
+async def upload_project_documents(
+    project_id: int,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload one or multiple documents to a specific project.
+    
+    This endpoint allows users with access to a project to upload documents.
+    Multiple files can be uploaded in a single request. Each file is saved
+    to the server and associated with the specified project.
+    
+    Args:
+        project_id (int): The ID of the project to upload documents to
+        request (Request): FastAPI request object to extract authentication token
+        files (List[UploadFile]): List of files to upload
+        db (Session): Database session dependency
+        
+    Returns:
+        dict: Upload results containing:
+            - message: Success message with count of uploaded files
+            - documents: List of newly created document DTOs
+            
+    Raises:
+        HTTPException: 
+            - 401 error if user is not authenticated
+            - 403 error if user doesn't have access to the project
+            - 404 error if project doesn't exist
+            - 500 error if file upload or database operation fails
+    """
+    token = extract_token(request)
+    user_id = get_current_user(token)
+    
+    if not check_project_access(db, user_id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    uploaded_documents = []
+    
+    for file in files:
+        try:
+            # Generate unique filename to avoid conflicts
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_filename = f"{timestamp}_{file.filename}"
+            
+            # Save the file to the server
+            file_location = f"uploads/{project_id}/{unique_filename}"
+            os.makedirs(os.path.dirname(file_location), exist_ok=True)
+            
+            with open(file_location, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+            
+            # Determine file type from extension
+            file_type = file.content_type or "application/octet-stream"
+            
+            # Create document record in database
+            new_document = create_document(
+                db=db,
+                project_id=project_id,
+                filename=unique_filename,
+                original_filename=file.filename,
+                file_path=file_location,
+                file_type=file_type,
+                uploaded_by=user_id
+            )
+            
+            uploaded_documents.append(get_document_dto(new_document))
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload {file.filename}: {str(e)}"
+            )
+    
+    return {
+        "message": f"Successfully uploaded {len(uploaded_documents)} document(s)",
+        "documents": uploaded_documents
+    }
 @router.post("/project/{project_id}/invite", tags=["Projects"])
+
 async def invite_user(
     project_id: int,
     user: str,

@@ -118,14 +118,37 @@ curl -b cookies.txt -X POST "http://127.0.0.1:9601/projects" \
 
 ### Get All Projects
 ```bash
-curl -X GET "http://127.0.0.1:9601/projects" \
-  -H "Authorization: Bearer YOUR_TOKEN"
+curl -b cookies.txt -X GET "http://127.0.0.1:9601/projects"
+```
+### Get info for project with ID 1
+```bash
+curl -b cookies.txt -X GET "http://127.0.0.1:9601/project/1/info"
+```
+
+### Update info for project with ID 1
+```bash
+
+curl -b cookies.txt -X PUT "http://127.0.0.1:9601/project/1/info" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Project Name",
+    "description": "Updated project description with more details"
+  }'
+```
+
+
+### Delete project with ID 1
+```bash
+curl -b cookies.txt -X DELETE "http://127.0.0.1:9601/project/1"
 ```
 
 ### Upload Documents
 ```bash
-curl -X POST "http://127.0.0.1:9601/project/1/documents" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "files=@/path/to/file.pdf" \
-  -F "files=@/path/to/file.docx"
+curl -b cookies.txt -X POST "http://127.0.0.1:9601/project/2/documents" \
+  -F "files=@document3.txt"
+```
+
+### Get Documents
+```bash
+curl -b cookies.txt -X GET "http://127.0.0.1:9601/project/1/documents"
 ```

@@ -155,27 +155,11 @@ def verify_refresh_token(token: str):
 
 
 def extract_token(request: Request):
-    """
-    Extract the access token from request cookies.
-    
-    Args:
-        request (Request): The FastAPI request object
-        
-    Returns:
-        str: The access token from cookies
-        
-    Raises:
-        HTTPException: 401 error if no access token is found in cookies
-    """
-    print(f"[DEBUG] All cookies received: {request.cookies}")
     token = request.cookies.get("access_token")
+    print(f"[DEBUG] Cookies received: {request.cookies}")
     print(f"[DEBUG] Access token from cookie: {token}")
-    
     if not token:
-        raise HTTPException(
-            status_code=401, 
-            detail="Not authenticated - no access token in cookies"
-        )
+        raise HTTPException(status_code=401, detail="Not authenticated")
     return token
 
 
