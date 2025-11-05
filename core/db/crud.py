@@ -8,6 +8,8 @@ File for CRUD operations
 from sqlalchemy.orm import Session
 from core.db.models import User, Project, Document, project_access
 from passlib.context import CryptContext
+from datetime import datetime
+
 
 pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
@@ -113,10 +115,19 @@ def delete_document(db: Session, document_id: int):
         return True
     return False
 
-def update_document(db: Session, document_id: int, original_filename: str = None):
-    db_document = get_document_by_id(db, document_id)
-    if db_document and original_filename:
-        db_document.original_filename = original_filename
-        db.commit()
-        db.refresh(db_document)
-    return db_document
+def update_document(db: Session, document_id: int, original_filename: str, 
+                   filename: str = None, file_path: str = None, file_type: str = None):
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        return None    
+    document.original_filename = original_filename
+    if filename:
+        document.filename = filename
+    if file_path:
+        document.file_path = file_path
+    if file_type:
+        document.file_type = file_type
+    document.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(document)
+    return document

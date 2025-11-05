@@ -5,7 +5,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Response, Request, File, UploadFile
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime
 
 from core.db.database import get_db
 from core.db.crud import (
@@ -22,6 +21,7 @@ from core.tools.tools import (
 
 from core.apps.documents import get_document_dto
 import os
+
 router = APIRouter()
 
 class ProjectCreate(BaseModel):
@@ -373,8 +373,7 @@ async def upload_project_documents(
     for file in files:
         try:
             # Generate unique filename to avoid conflicts
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            unique_filename = f"{timestamp}_{file.filename}"
+            unique_filename = f"{file.filename}"
             
             # Save the file to the server
             file_location = f"uploads/{project_id}/{unique_filename}"
@@ -410,8 +409,8 @@ async def upload_project_documents(
         "message": f"Successfully uploaded {len(uploaded_documents)} document(s)",
         "documents": uploaded_documents
     }
-@router.post("/project/{project_id}/invite", tags=["Projects"])
 
+@router.post("/project/{project_id}/invite", tags=["Projects"])
 async def invite_user(
     project_id: int,
     user: str,

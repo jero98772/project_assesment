@@ -142,7 +142,7 @@ curl -b cookies.txt -X PUT "http://127.0.0.1:9601/project/1/info" \
 curl -b cookies.txt -X DELETE "http://127.0.0.1:9601/project/1"
 ```
 
-### Upload Documents
+### Upload Documents (yes Documents in plural)
 ```bash
 curl -b cookies.txt -X POST "http://127.0.0.1:9601/project/2/documents" \
   -F "files=@document3.txt"
@@ -150,5 +150,19 @@ curl -b cookies.txt -X POST "http://127.0.0.1:9601/project/2/documents" \
 
 ### Get Documents
 ```bash
-curl -b cookies.txt -X GET "http://127.0.0.1:9601/project/1/documents"
+curl -b cookies.txt -X GET "http://127.0.0.1:9601/project/2/documents"
 ```
+
+### Delete Document
+
+```bash
+curl -b cookies.txt -X DELETE "http://127.0.0.1:9601/document/2"
+```
+
+### Download File
+
+```bash
+curl -b cookies.txt -X GET "http://127.0.0.1:9601/document/2"   -o downloaded_file.txt
+```
+
+

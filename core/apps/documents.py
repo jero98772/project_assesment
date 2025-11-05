@@ -3,6 +3,8 @@
 #project_assesment - by Jero98772
 
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Request
+from fastapi.responses import FileResponse
+
 from sqlalchemy.orm import Session
 from core.db.database import get_db
 from core.db.crud import (
@@ -18,6 +20,7 @@ from core.tools.tools import (
 import os
 import uuid
 from pathlib import Path
+from datetime import datetime
 
 router = APIRouter()
 
@@ -39,65 +42,6 @@ def get_document_dto(doc):
         "updated_at": doc.updated_at.isoformat()
     }
 
-@router.get("/project/{project_id}/documents", tags=["Documents"])
-async def get_documents(
-    project_id: int,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """
-    Retrieve all documents associated with a specific project.
-    Authentication via cookies.
-    """
-    token = extract_token(request)
-    user_id = get_current_user(token)
-    
-    if not check_project_access(db, user_id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    documents = get_project_documents(db, project_id)
-    return [get_document_dto(doc) for doc in documents]
-
-@router.post("/project/{project_id}/documents", tags=["Documents"])
-async def upload_documents(
-    project_id: int,
-    request: Request,
-    files: list[UploadFile] = File(...),
-    db: Session = Depends(get_db)
-):
-    """
-    Upload one or multiple documents to a project.
-    Authentication via cookies.
-    """
-    token = extract_token(request)
-    user_id = get_current_user(token)
-    
-    if not check_project_access(db, user_id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    project = get_project_by_id(db, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    uploaded_docs = []
-    for file in files:
-        file_ext = file.filename.split('.')[-1].lower()
-        if file_ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(status_code=400, detail=f"File type {file_ext} not allowed")
-        
-        unique_filename = f"{uuid.uuid4()}_{file.filename}"
-        file_path = os.path.join(UPLOAD_DIR, unique_filename)
-        
-        with open(file_path, "wb") as f:
-            f.write(await file.read())
-        
-        doc = create_document(
-            db, project_id, unique_filename, file.filename,
-            file_path, file_ext, user_id
-        )
-        uploaded_docs.append(get_document_dto(doc))
-    
-    return {"documents": uploaded_docs}
 
 @router.get("/document/{document_id}", tags=["Documents"])
 async def download_document(
@@ -113,6 +57,9 @@ async def download_document(
     user_id = get_current_user(token)
     
     document = get_document_by_id(db, document_id)
+    print("\n\n\n")
+    print("document")
+    print(document)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
@@ -122,7 +69,6 @@ async def download_document(
     if not os.path.exists(document.file_path):
         raise HTTPException(status_code=404, detail="File not found on server")
     
-    from fastapi.responses import FileResponse
     return FileResponse(document.file_path, filename=document.original_filename)
 
 @router.put("/document/{document_id}", tags=["Documents"])
@@ -132,14 +78,14 @@ async def update_doc(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    """
-    Update document metadata (rename document).
-    Authentication via cookies.
-    """
+
     token = extract_token(request)
     user_id = get_current_user(token)
     
     document = get_document_by_id(db, document_id)
+    print("\n\n\n")
+    print("document")
+    print(document)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
@@ -150,7 +96,50 @@ async def update_doc(
     if role not in ['owner', 'participant']:
         raise HTTPException(status_code=403, detail="Access denied")
     
-    doc = update_document(db, document_id, original_filename)
+    # Get the old file path
+    old_file_path = document.file_path
+    
+    # Check if the old file exists
+    print(document.file_path)
+    if not os.path.exists(old_file_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+    
+    # Extract the file extension from the new filename
+    new_file_ext = original_filename.split('.')[-1].lower() if '.' in original_filename else document.file_type
+    
+    # Validate file extension
+    if new_file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type {new_file_ext} not allowed")
+    
+    # Generate new unique filename keeping the UUID prefix
+    # Extract the UUID part from the current filename
+    old_filename_parts = document.filename.split('_', 1)
+    if len(old_filename_parts) == 2:
+        uuid_part = old_filename_parts[0]
+        new_unique_filename = f"{uuid_part}_{original_filename}"
+    else:
+        # If no UUID prefix exists, generate a new one
+        new_unique_filename = f"{uuid.uuid4()}_{original_filename}"
+    
+    # Create new file path
+    new_file_path = os.path.join(UPLOAD_DIR, new_unique_filename)
+    
+    # Rename the physical file
+    try:
+        os.rename(old_file_path, new_file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to rename file: {str(e)}")
+    
+    # Update document in database with new information
+    doc = update_document(
+        db, 
+        document_id, 
+        original_filename,
+        new_unique_filename,
+        new_file_path,
+        new_file_ext
+    )
+    
     return get_document_dto(doc)
 
 @router.delete("/document/{document_id}", tags=["Documents"])
