@@ -180,12 +180,13 @@ curl -b cookies.txt -X GET "http://127.0.0.1:9601/document/2"   -o downloaded_fi
 ```
 
 ### Update just the filename
-```
+```bash
 curl -b cookies.txt -X PUT "http://127.0.0.1:9601/document/123" \
   -F "original_filename=renamed_document.txt"
 ```
+
 ### Update both filename and content
-```
+```bash
 curl -b cookies.txt -X PUT "http://127.0.0.1:9601/document/123" \
   -F "file=@new_document.txt" \
   -F "original_filename=renamed_document.txt"
