@@ -63,9 +63,23 @@ CREATE USER your_db_user WITH PASSWORD 'your_password';
 -- Create a database
 CREATE DATABASE projects_db OWNER your_db_user;
 
+
+\c projects_db
+
+-- Grant privileges on the public schema
+GRANT ALL ON SCHEMA public TO your_db_user;
+
+-- Also allow creation of objects in it
+ALTER SCHEMA public OWNER TO your_db_user;
+
 -- Grant privileges
 GRANT ALL PRIVILEGES ON DATABASE projects_db TO your_db_user;
+
+-- Exit
+\q
+
 ```
+
 
 5. Run the application:
 ```bash
@@ -165,4 +179,14 @@ curl -b cookies.txt -X DELETE "http://127.0.0.1:9601/document/2"
 curl -b cookies.txt -X GET "http://127.0.0.1:9601/document/2"   -o downloaded_file.txt
 ```
 
-
+### Update just the filename
+```
+curl -b cookies.txt -X PUT "http://127.0.0.1:9601/document/123" \
+  -F "original_filename=renamed_document.txt"
+```
+### Update both filename and content
+```
+curl -b cookies.txt -X PUT "http://127.0.0.1:9601/document/123" \
+  -F "file=@new_document.txt" \
+  -F "original_filename=renamed_document.txt"
+```

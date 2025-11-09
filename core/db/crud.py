@@ -115,18 +115,21 @@ def delete_document(db: Session, document_id: int):
         return True
     return False
 
-def update_document(db: Session, document_id: int, original_filename: str, 
+def update_document(db: Session, document_id: int, original_filename: str = None, 
                    filename: str = None, file_path: str = None, file_type: str = None):
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         return None    
-    document.original_filename = original_filename
+    
+    if original_filename:
+        document.original_filename = original_filename
     if filename:
         document.filename = filename
     if file_path:
         document.file_path = file_path
     if file_type:
         document.file_type = file_type
+    
     document.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(document)

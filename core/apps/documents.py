@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-"
 #project_assesment - by Jero98772
 
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Request
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Request, Form
 from fastapi.responses import FileResponse
 
 from sqlalchemy.orm import Session
@@ -74,11 +74,11 @@ async def download_document(
 @router.put("/document/{document_id}", tags=["Documents"])
 async def update_doc(
     document_id: int,
-    original_filename: str,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    original_filename: str = Form(None),
+    file: UploadFile = File(None)
 ):
-
     token = extract_token(request)
     user_id = get_current_user(token)
     
@@ -104,43 +104,80 @@ async def update_doc(
     if not os.path.exists(old_file_path):
         raise HTTPException(status_code=404, detail="File not found on server")
     
-    # Extract the file extension from the new filename
-    new_file_ext = original_filename.split('.')[-1].lower() if '.' in original_filename else document.file_type
+    # Case 1: Only file content is being updated (no filename change)
+    if file and not original_filename:
+        try:
+            # Validate file extension matches the existing file type
+            uploaded_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+            if uploaded_ext != document.file_type:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"New file type ({uploaded_ext}) must match existing file type ({document.file_type})"
+                )
+            
+            # Replace the file content while keeping the same path
+            with open(old_file_path, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+            
+            # Update only the timestamp in database
+            doc = update_document(db, document_id)
+            
+            return get_document_dto(doc)
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to update file content: {str(e)}")
     
-    # Validate file extension
-    if new_file_ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"File type {new_file_ext} not allowed")
+    # Case 2: Filename is being updated (with or without file content)
+    elif original_filename:
+        # Extract the file extension from the new filename
+        new_file_ext = original_filename.split('.')[-1].lower() if '.' in original_filename else document.file_type
+        
+        # Validate file extension
+        if new_file_ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"File type {new_file_ext} not allowed")
+        
+        # Generate new unique filename keeping the UUID prefix
+        old_filename_parts = document.filename.split('_', 1)
+        if len(old_filename_parts) == 2:
+            uuid_part = old_filename_parts[0]
+            new_unique_filename = f"{uuid_part}_{original_filename}"
+        else:
+            # If no UUID prefix exists, generate a new one
+            new_unique_filename = f"{uuid.uuid4()}_{original_filename}"
+        
+        # Create new file path
+        new_file_path = os.path.join(UPLOAD_DIR, new_unique_filename)
+        
+        # If file content is also provided, update it first
+        if file:
+            try:
+                with open(old_file_path, "wb") as buffer:
+                    content = await file.read()
+                    buffer.write(content)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to update file content: {str(e)}")
+        
+        # Rename the physical file
+        try:
+            os.rename(old_file_path, new_file_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to rename file: {str(e)}")
+        
+        # Update document in database with new information
+        doc = update_document(
+            db, 
+            document_id, 
+            original_filename,
+            new_unique_filename,
+            new_file_path,
+            new_file_ext
+        )
+        
+        return get_document_dto(doc)
     
-    # Generate new unique filename keeping the UUID prefix
-    # Extract the UUID part from the current filename
-    old_filename_parts = document.filename.split('_', 1)
-    if len(old_filename_parts) == 2:
-        uuid_part = old_filename_parts[0]
-        new_unique_filename = f"{uuid_part}_{original_filename}"
     else:
-        # If no UUID prefix exists, generate a new one
-        new_unique_filename = f"{uuid.uuid4()}_{original_filename}"
-    
-    # Create new file path
-    new_file_path = os.path.join(UPLOAD_DIR, new_unique_filename)
-    
-    # Rename the physical file
-    try:
-        os.rename(old_file_path, new_file_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to rename file: {str(e)}")
-    
-    # Update document in database with new information
-    doc = update_document(
-        db, 
-        document_id, 
-        original_filename,
-        new_unique_filename,
-        new_file_path,
-        new_file_ext
-    )
-    
-    return get_document_dto(doc)
+        raise HTTPException(status_code=400, detail="Either 'file' or 'original_filename' must be provided")
 
 @router.delete("/document/{document_id}", tags=["Documents"])
 async def delete_doc(
