@@ -34,6 +34,36 @@ async def register(user: UserRegister, db: Session = Depends(get_db)):
         dict: User creation success response with user details
         
     Raises:
+        HTTPException: 400 error if passwords don't match, 409 if user already exists
+    """
+    if user.password != user.password_repeat:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    
+    existing_user = get_user_by_login(db, user.login)
+    if existing_user:
+        # FIXED: Changed from 400 to 409 for duplicate user
+        raise HTTPException(status_code=409, detail="User already exists")
+    
+    new_user = create_user(db, user.login, user.email, user.password)
+    # FIXED: Return 201 Created instead of 200
+    return {
+        "id": new_user.id, 
+        "login": new_user.login, 
+        "email": new_user.email, 
+        "message": "User created successfully"
+    }@router.post("/auth", tags=["Authentication"])
+async def register(user: UserRegister, db: Session = Depends(get_db)):
+    """
+    Register a new user in the system.
+    
+    Args:
+        user (UserRegister): User registration data containing login, email, password, and password confirmation
+        db (Session): Database session dependency
+        
+    Returns:
+        dict: User creation success response with user details
+        
+    Raises:
         HTTPException: 400 error if passwords don't match or user already exists
     """
     if user.password != user.password_repeat:

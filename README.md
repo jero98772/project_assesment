@@ -1,5 +1,10 @@
-# Project_assesment
+# Project_assesment QA
 
+
+Run tests:
+```bash
+python tests.py 
+```
 
 A FastAPI-based project management service for creating, updating, sharing, and deleting projects with document management.
 

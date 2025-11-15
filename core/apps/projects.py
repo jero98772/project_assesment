@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from core.db.database import get_db
+from core.db.models import Project  # FIXED: Added missing import
 from core.db.crud import (
     create_project, get_project_by_id, get_user_projects, update_project, create_document,
     delete_project, check_project_access, grant_project_access, get_user_role, get_user_by_login
@@ -15,9 +16,9 @@ from core.db.crud import (
 from core.tools.tools import (
     verify_token,
     extract_token,
-    get_current_user,
-    extract_token
-    )
+    get_current_user
+    # FIXED: Removed duplicate extract_token import
+)
 
 from core.apps.documents import get_document_dto
 import os
@@ -40,7 +41,7 @@ class ProjectDetail(BaseModel):
     updated_at: str
     documents: list
 
-@router.post("/projects", tags=["Projects"])
+@router.post("/projects", tags=["Projects"], status_code=201)
 async def create_new_project(
     project: ProjectCreate,
     request: Request,
@@ -71,19 +72,29 @@ async def create_new_project(
     Raises:
         HTTPException: 401 error if user is not authenticated
     """
-    token = extract_token(request)
-    print(token)
-    user_id = get_current_user(token)
-    print(user_id)
-    new_project = create_project(db, project.name, project.description, user_id)
-    return {
-        "id": new_project.id,
-        "name": new_project.name,
-        "description": new_project.description,
-        "created_at": new_project.created_at.isoformat(),
-        "updated_at": new_project.updated_at.isoformat(),
-        "documents": []
-    }
+    try:
+        token = extract_token(request)
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = get_current_user(token)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        
+        new_project = create_project(db, project.name, project.description, user_id)
+        return {
+            "id": new_project.id,
+            "name": new_project.name,
+            "description": new_project.description,
+            "created_at": new_project.created_at.isoformat(),
+            "updated_at": new_project.updated_at.isoformat(),
+            "documents": []
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in create_new_project: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/projects", tags=["Projects"])
 async def get_all_projects(
@@ -113,7 +124,12 @@ async def get_all_projects(
         HTTPException: 401 error if user is not authenticated
     """
     token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
     user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     
     projects = get_user_projects(db, user_id)
     result = []
@@ -161,15 +177,21 @@ async def get_project_info(
             - 403 error if user doesn't have access to the project
             - 404 error if project doesn't exist
     """
-    token = extract_token(request)
-    user_id = get_current_user(token)
-    
-    if not check_project_access(db, user_id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    # FIXED: Check if project exists first, then authenticate
     project = get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    if not check_project_access(db, user_id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
     
     docs = [get_document_dto(doc) for doc in project.documents]
     return {
@@ -214,22 +236,34 @@ async def update_project_info(
     Raises:
         HTTPException: 
             - 401 error if user is not authenticated
-            - 403 error if user is not the project owner
             - 404 error if project doesn't exist
+            - 403 error if user is not the project owner
     """
-    token = extract_token(request)
-    user_id = get_current_user(token)
+    # FIXED: Check if project exists BEFORE authentication
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
     
+    # Extract and validate authentication
+    token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    # Now check if user has access to this project
     if not check_project_access(db, user_id, project_id):
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # Check if user is the owner
     role = get_user_role(db, user_id, project_id)
     if role != 'owner':
         raise HTTPException(status_code=403, detail="Only owner can update project info")
     
+    # Update the project
     project = update_project(db, project_id, project_update.name, project_update.description)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
     
     docs = [get_document_dto(doc) for doc in project.documents]
     return {
@@ -268,8 +302,18 @@ async def delete_project_endpoint(
             - 403 error if user is not the project owner
             - 404 error if project doesn't exist
     """
+    # FIXED: Check if project exists first
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
     token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
     user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     
     role = get_user_role(db, user_id, project_id)
     if role != 'owner':
@@ -277,7 +321,7 @@ async def delete_project_endpoint(
     
     success = delete_project(db, project_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=500, detail="Failed to delete project")
     
     return {"message": "Project deleted successfully"}
 
@@ -312,15 +356,21 @@ async def get_project_documents(
             - 403 error if user doesn't have access to the project
             - 404 error if project doesn't exist
     """
-    token = extract_token(request)
-    user_id = get_current_user(token)
-    
-    if not check_project_access(db, user_id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    # FIXED: Check if project exists first
     project = get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    if not check_project_access(db, user_id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
     
     documents = [get_document_dto(doc) for doc in project.documents]
     return documents
@@ -358,15 +408,21 @@ async def upload_project_documents(
             - 404 error if project doesn't exist
             - 500 error if file upload or database operation fails
     """
-    token = extract_token(request)
-    user_id = get_current_user(token)
-    
-    if not check_project_access(db, user_id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    # FIXED: Check if project exists first
     project = get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    if not check_project_access(db, user_id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
     
     uploaded_documents = []
     
@@ -437,11 +493,21 @@ async def invite_user(
         HTTPException: 
             - 401 error if user is not authenticated
             - 403 error if user is not the project owner
-            - 404 error if the invited user doesn't exist
+            - 404 error if the invited user doesn't exist or project doesn't exist
             - 400 error if the user already has access to the project
     """
+    # FIXED: Check if project exists first
+    project = get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
     token = extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
     user_id = get_current_user(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     
     role = get_user_role(db, user_id, project_id)
     if role != 'owner':
